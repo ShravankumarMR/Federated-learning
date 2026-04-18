@@ -1,0 +1,17 @@
+project:
+  name: ml-agentic-platform
+  domain: biometric-fraud
+
+orchestration:
+  engine: langgraph
+  workflow: fraud_decision_graph
+
+agents:
+  biometric:
+    enabled: true
+  graph_fraud:
+    enabled: true
+  federated_learning:
+    enabled: true
+  rag:
+    enabled: true
