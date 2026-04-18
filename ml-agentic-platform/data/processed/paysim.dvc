@@ -1,0 +1,6 @@
+outs:
+- md5: c3f592ef0b36e4bbb5daee291fb93081.dir
+  size: 1004121473
+  nfiles: 2
+  hash: md5
+  path: paysim
