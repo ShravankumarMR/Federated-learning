@@ -14,6 +14,9 @@ __pycache__/
 data/raw/*
 data/processed/*
 data/features/*
+data/raw/IEEE-CIS_FRAUD/
+data/processed/ieee_cis_fraud/
+data/features/ieee_cis_fraud/
 !data/raw/*.dvc
 !data/processed/*.dvc
 !data/features/*.dvc

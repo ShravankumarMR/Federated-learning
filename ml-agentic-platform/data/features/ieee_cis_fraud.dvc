@@ -1,0 +1,6 @@
+outs:
+- md5: e8ad1412c7b4740f605ac64c951cac64.dir
+  size: 2015176414
+  nfiles: 3
+  hash: md5
+  path: ieee_cis_fraud
