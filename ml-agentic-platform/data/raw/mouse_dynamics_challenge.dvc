@@ -1,0 +1,6 @@
+outs:
+- md5: e3b0e59a5577c900b1251f0d234791d2.dir
+  size: 204171086
+  nfiles: 1678
+  hash: md5
+  path: mouse_dynamics_challenge

@@ -14,9 +14,15 @@ __pycache__/
 data/raw/*
 data/processed/*
 data/features/*
+!data/raw/*.dvc
+!data/processed/*.dvc
+!data/features/*.dvc
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/features/.gitkeep
+
+# Notebook-generated EDA artifacts
+notebooks/eda_outputs/
 
 # Notebook
 .ipynb_checkpoints/
