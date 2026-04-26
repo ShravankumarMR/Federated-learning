@@ -1,2 +1,0 @@
-TransactionID,TransactionDT,TransactionAmt,ProductCD,card1,isFraud
-1,86400,10.0,W,1234,0

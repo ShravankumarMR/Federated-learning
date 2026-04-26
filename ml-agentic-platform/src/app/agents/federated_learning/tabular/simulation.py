@@ -1,7 +1,7 @@
-"""Flower tabular federated simulation — standalone training command.
+"""Flower tabular federated simulation — core training logic.
 
-This module is the **top-level entrypoint** for the IEEE-CIS vertical-FL workflow.
-It is intentionally decoupled from the FastAPI / LangGraph request path.
+This module owns ``SimulationConfig`` and ``run_federated_simulation``.
+CLI argument parsing and the ``main()`` entry point live in ``cli.py``.
 
 CLI usage (after ``pip install -e .``)
 ---------------------------------------
@@ -21,7 +21,7 @@ CLI usage (after ``pip install -e .``)
         --mlflow-experiment-name federated_tabular_fraud
 
     # Same via python -m
-    python -m app.agents.federated_learning.tabular.simulation \\
+    python -m app.agents.federated_learning.tabular.cli \\
         --features-dir data/features/ieee_cis_fraud --rounds 3 --disable-mlflow
 
 Outputs written to ``--output-dir`` (default ``artifacts/federated_learning/``)
@@ -47,12 +47,11 @@ wrapper; see the module docstring in ``agent.py`` for details.
 """
 from __future__ import annotations
 
-from argparse import ArgumentParser, Namespace
 from dataclasses import asdict, dataclass
 import json
 import logging
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 import flwr as fl
 import mlflow
@@ -81,6 +80,8 @@ from app.agents.federated_learning.tabular.partitioning import (
 )
 from app.agents.federated_learning.tabular.shap_utils import compute_shap_summary
 from app.core.settings import get_settings
+from app.mlops.registry.model_registry import ModelRegistry
+from app.mlops.tracking.mlflow_client import TrackingClient
 
 _logger = logging.getLogger(__name__)
 
@@ -325,11 +326,11 @@ def run_federated_simulation(
 
     if simulation_config.enable_mlflow:
         tracking_uri = simulation_config.mlflow_tracking_uri or settings.mlflow_tracking_uri
-        mlflow.set_tracking_uri(tracking_uri)
-        mlflow.set_experiment(simulation_config.mlflow_experiment_name)
+        _tracking = TrackingClient(tracking_uri=tracking_uri)
+        _tracking.set_experiment(simulation_config.mlflow_experiment_name)
         run_name = _resolve_mlflow_run_name(simulation_config)
 
-        with mlflow.start_run(run_name=run_name):
+        with mlflow.start_run(run_name=run_name) as active_run:
             _log_mlflow_params(
                 simulation_config=simulation_config,
                 num_features=len(dataset.feature_names),
@@ -345,6 +346,11 @@ def run_federated_simulation(
             mlflow.log_artifact(str(partition_path), artifact_path="metadata")
             mlflow.log_artifact(str(shap_path), artifact_path="metrics")
             mlflow.log_artifact(str(metrics_path), artifact_path="metrics")
+            _registry = ModelRegistry()
+            _registry.register(
+                model_uri=f"runs:/{active_run.info.run_id}/checkpoints/{model_path.name}",
+                name=f"federated-fraud-{simulation_config.dataset}",
+            )
 
     return {
         "final_metrics": final_metrics,
@@ -361,89 +367,6 @@ def run_federated_simulation(
             "metrics": str(metrics_path),
         },
     }
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    args = _parse_args(argv)
-    result = run_federated_simulation(
-        config=SimulationConfig(
-            num_clients=args.num_clients,
-            rounds=args.rounds,
-            local_epochs=args.local_epochs,
-            batch_size=args.batch_size,
-            learning_rate=args.learning_rate,
-            weight_decay=args.weight_decay,
-            model_type=args.model_type,
-            hidden_dim=args.hidden_dim,
-            random_state=args.random_state,
-            max_explain_samples=args.max_explain_samples,
-            include_parameters_in_response=args.include_parameters_in_response,
-            enable_mlflow=not args.disable_mlflow,
-            mlflow_tracking_uri=args.mlflow_tracking_uri,
-            mlflow_experiment_name=args.mlflow_experiment_name,
-            mlflow_run_name=args.mlflow_run_name,
-            dataset=args.dataset,
-            partition_mode=args.partition_mode,
-        ),
-        features_dir=Path(args.features_dir).resolve() if args.features_dir else None,
-        processed_dir=Path(args.processed_dir).resolve() if args.processed_dir else None,
-        output_dir=Path(args.output_dir).resolve() if args.output_dir else None,
-    )
-    print(json.dumps(result, indent=2))
-    return 0
-
-
-def _parse_args(argv: Sequence[str] | None) -> Namespace:
-    settings = get_settings()
-    parser = ArgumentParser(description="Run Flower tabular federated simulation for IEEE-CIS fraud")
-    parser.add_argument("--features-dir", default=None)
-    parser.add_argument("--processed-dir", default=None)
-    parser.add_argument("--output-dir", default="artifacts/federated_learning")
-    parser.add_argument("--num-clients", type=int, default=settings.federated_min_clients)
-    parser.add_argument("--rounds", type=int, default=settings.federated_rounds)
-    parser.add_argument("--local-epochs", type=int, default=2)
-    parser.add_argument("--batch-size", type=int, default=256)
-    parser.add_argument("--learning-rate", type=float, default=1e-3)
-    parser.add_argument("--weight-decay", type=float, default=1e-4)
-    parser.add_argument("--model-type", choices=["logistic", "nn"], default="logistic")
-    parser.add_argument("--hidden-dim", type=int, default=64)
-    parser.add_argument("--random-state", type=int, default=42)
-    parser.add_argument("--max-explain-samples", type=int, default=128)
-    parser.add_argument("--include-parameters-in-response", action="store_true")
-    parser.add_argument(
-        "--disable-mlflow",
-        action="store_true",
-        help="Disable MLflow logging for this run.",
-    )
-    parser.add_argument(
-        "--mlflow-tracking-uri",
-        default=settings.mlflow_tracking_uri,
-        help="Override MLflow tracking URI.",
-    )
-    parser.add_argument(
-        "--mlflow-experiment-name",
-        default="federated_tabular_fraud",
-        help="MLflow experiment name.",
-    )
-    parser.add_argument(
-        "--mlflow-run-name",
-        default=None,
-        help="Optional MLflow run name.",
-    )
-    # Dataset and partitioning
-    parser.add_argument(
-        "--dataset",
-        choices=["ieee_cis", "paysim"],
-        default="ieee_cis",
-        help="Dataset to use for federated training (default: ieee_cis).",
-    )
-    parser.add_argument(
-        "--partition-mode",
-        choices=["vertical", "horizontal"],
-        default="vertical",
-        help="Partition mode: vertical (column-split) or horizontal (row-split) (default: vertical).",
-    )
-    return parser.parse_args(argv)
 
 
 def _build_parameter_payload(
@@ -543,5 +466,4 @@ def _log_mlflow_final_metrics(final_metrics: dict[str, float]) -> None:
     )
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
+

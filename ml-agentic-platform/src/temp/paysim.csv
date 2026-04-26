@@ -1,2 +1,0 @@
-step,type,amount,nameOrig,oldbalanceOrg,newbalanceOrig,nameDest,oldbalanceDest,newbalanceDest,isFraud,isFlaggedFraud
-1,PAYMENT,10.0,C123,10.0,0.0,M456,0.0,0.0,0,0

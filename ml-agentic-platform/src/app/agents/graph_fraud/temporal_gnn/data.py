@@ -8,7 +8,7 @@ import torch
 from torch_geometric.data import Data
 
 from app.agents.graph_fraud.temporal_gnn.config import TemporalDatasetConfig
-from app.data_engineering.features.transaction_graph import (
+from app.data_engineering.loaders import (
     load_ieee_cis_transactions,
     load_paysim_transactions,
     preprocess_transactions,

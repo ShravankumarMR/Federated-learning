@@ -13,9 +13,26 @@ try:
 except ImportError:
     Data = Any
 
+_DATASET_DEFAULT_ARTIFACTS: dict[str, str] = {
+    "ieee_cis": "artifacts/temporal_gnn/ieee_cis_temporal_gat.pt",
+    "paysim": "artifacts/temporal_gnn/paysim_temporal_gat.pt",
+}
+
+_VALID_DATASETS = frozenset(_DATASET_DEFAULT_ARTIFACTS.keys())
+
 
 class GraphFraudAgent:
-    def __init__(self) -> None:
+    def __init__(self, dataset: str = "ieee_cis") -> None:
+        if dataset not in _VALID_DATASETS:
+            raise ValueError(
+                f"Unknown dataset '{dataset}'. Valid options: {sorted(_VALID_DATASETS)}"
+            )
+        self.dataset = dataset
+        self._default_model_path: Path | None = None
+        _artifact_rel = _DATASET_DEFAULT_ARTIFACTS[dataset]
+        _resolved = Path(_artifact_rel)
+        if _resolved.exists():
+            self._default_model_path = _resolved
         self._model_cache: dict[tuple[str, str, int, int, int, int, int, int, float], TemporalGraphModel] = {}
 
     def score(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -30,12 +47,23 @@ class GraphFraudAgent:
         return self._score_with_connectivity_heuristic(payload)
 
     def _can_use_temporal_model(self, payload: dict[str, Any]) -> bool:
-        required_fields = ["model_path", "x", "edge_index", "edge_attr", "edge_time", "target_node_index"]
-        return all(field in payload for field in required_fields)
+        graph_fields = ["x", "edge_index", "edge_attr", "edge_time", "target_node_index"]
+        has_graph_data = all(field in payload for field in graph_fields)
+        has_model = "model_path" in payload or self._default_model_path is not None
+        return has_graph_data and has_model
 
     def _score_with_temporal_gnn(self, payload: dict[str, Any]) -> dict[str, Any]:
+        model_path = (
+            Path(str(payload["model_path"]))
+            if "model_path" in payload
+            else self._default_model_path
+        )
+        if model_path is None:
+            raise RuntimeError(
+                f"No model_path in payload and no default artifact found for dataset '{self.dataset}'"
+            )
         model = self._load_model(
-            model_path=Path(str(payload["model_path"])),
+            model_path=model_path,
             backbone=str(payload.get("backbone", "gat")),
             node_feature_dim=int(payload.get("node_feature_dim", len(payload["x"][0]))),
             edge_attr_dim=int(payload.get("edge_attr_dim", len(payload["edge_attr"][0]))),
@@ -67,6 +95,7 @@ class GraphFraudAgent:
             "risk": round(risk, 4),
             "decision": decision,
             "signal": "temporal_gnn",
+            "dataset": self.dataset,
         }
 
     def _load_model(
@@ -123,4 +152,5 @@ class GraphFraudAgent:
             "score": round(1.0 - risk, 4),
             "risk": round(risk, 4),
             "signal": "graph_connectivity",
+            "dataset": self.dataset,
         }
